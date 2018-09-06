@@ -1,6 +1,5 @@
 library(DT)
 library(shiny)
-library(rCharts)
 library(lpSolve)
 
 options(shiny.trace=TRUE, stringsAsFactors = FALSE)
@@ -10,35 +9,22 @@ shinyServer(function(input, output, session){
 preds <- reactiveValues()
 preds$df <-  read.csv("http://s3.amazonaws.com/tcbdfs/preds_nfl.csv")
 
-refresh_data <- reactive({
-
-        preds$df <- read.csv("http://s3.amazonaws.com/tcbdfs/preds_nfl.csv")
-
-	return(preds$df)
-})
 
 filterData <- reactive({
  	
-	preds$df$player_names <- as.character(preds$df$player_names)
- 	preds$df$team <-as.character(preds$df$teams)
-        preds$df$positions <- as.character(preds$df$positions)
-	preds$df$title <- as.character(preds$df$title)
-	preds2 <- preds$df
+  preds <- preds$df
+	preds$player_names <- as.character(preds$player_names)
+ 	preds$team <-as.character(preds$teams)
+  preds$positions <- as.character(preds$positions)
+	preds$title <- as.character(preds$title)
+	preds2 <<- preds
 	preds2 <- preds2[preds2$line >= input$line,]
-#	preds2 <- preds2[preds2$value <= input$value,]
 	preds2 <- preds2[preds2$Salary >= input$salary[1] & preds2$Salary <= input$salary[2],]
 	preds2 <- preds2[preds2$title %in% input$games,]
 	preds2$spread <- preds2$spread * -1
 	if(input$fav == TRUE){
 		preds2 <- preds2[preds2$spread < 0,]
 	}
-	
-	
-#	if(input$type == 'NF'){
-#		obj <- preds2$nf_pred
-#	} else {
-#		obj <- preds2$score
-#	}
 
 	obj <- preds2$FP
 	con <- rbind(t(model.matrix(~ positions + 0,preds2)), t(model.matrix(~ team + 0, preds2)), rep(1,nrow(preds2)), preds2$Salary)
@@ -47,7 +33,6 @@ filterData <- reactive({
 	result <- lp("max", obj, con, dir, rhs, all.bin = TRUE)	
 	results <- preds2[which(result$solution == 1),]
 	results$spread <- as.numeric(results$spread)
-	#results$spread <- results$spread * -1
 	results <- results[,c("player_names", "positions", "team", "opponent", "Salary", "FP","line", "spread", "pa", "value")]
 	colnames(results) <- c("Player", "Position", "Team", "Opp", "Salary", "FP", "Line", "Spread", "PA", "Value")
 	return(list(results, result))
@@ -55,8 +40,9 @@ filterData <- reactive({
 })
 
 deleteRow <- observeEvent(input$delete.button, {
-	chosen_player <- preds$df[c(input$results_rows_selected),]$player_names
-        preds$df <- preds$df[-which(preds$df$player_names %in% chosen_player),]
+	chosen_player <- filterData()[[1]][c(input$results_rows_selected),]$Player
+	print(chosen_player)
+  preds$df <- preds$df[-which(preds$df$player_names %in% chosen_player),]
 })
 
 refresh <- observeEvent(input$refresh, {
@@ -78,7 +64,7 @@ output$update <- renderPrint({
 })
 
 output$allplayers <- renderDataTable({
-	preds3 <- preds$df
+	preds3 <- preds()
 	preds3$spread <- preds3$spread * -1
 	datatable(preds3, options=list(autowidth=TRUE))
 })
@@ -86,7 +72,7 @@ output$allplayers <- renderDataTable({
 output$total <- renderPrint({
   r <- filterData()[[2]]
   
-  info <-  paste0("Total:", sum(filterData()[[1]]$nf_pred))
+  info <-  paste0("Total:", sum(filterData()[[1]]$FP))
   cat(as.character(HTML(info)))
 })
 

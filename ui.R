@@ -1,6 +1,5 @@
 library(DT)
 library(shiny)
-library(rCharts)
 
 options(digits=3)
 
